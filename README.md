@@ -1,6 +1,6 @@
 # StyleGAN detector
 
-Detector de imagens deepfake usando Xception com fine-tuning.
+Prototipo para base de modelo de detecção de imagens geradas utilizando StyleGAN.
 Desenvolvido como TCC.
 
 ## Como rodar com Docker
