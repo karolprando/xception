@@ -1,4 +1,4 @@
-# Deepfake Detector
+# StyleGAN detector
 
 Detector de imagens deepfake usando Xception com fine-tuning.
 Desenvolvido como TCC.
