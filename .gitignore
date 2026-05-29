@@ -1,0 +1,19 @@
+# Modelo (fica no Hugging Face, nao no GitHub)
+*.pth
+*.pt
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+env/
+
+# Resultados de treino
+resultados/
+
+# OS
+.DS_Store
+Thumbs.db

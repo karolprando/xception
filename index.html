@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deepfake Detector</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #111118;
+      --border:    #1e1e2e;
+      --accent:    #00f5a0;
+      --danger:    #ff3c5f;
+      --muted:     #44445a;
+      --text:      #e8e8f0;
+      --text-dim:  #7070a0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px;
+      overflow-x: hidden;
+    }
+
+    /* Grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    /* Glow blob */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(0,245,160,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 680px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(0,245,160,0.3);
+      padding: 4px 12px;
+      border-radius: 100px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    h1 span {
+      color: var(--accent);
+    }
+
+    .subtitle {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      border: 1.5px dashed var(--border);
+      border-radius: 16px;
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: var(--surface);
+      position: relative;
+      overflow: hidden;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(0,245,160,0.03);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      color: var(--muted);
+    }
+
+    .upload-zone h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .upload-zone p {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .upload-zone p span {
+      color: var(--accent);
+    }
+
+    /* ── Preview ── */
+    #preview-section {
+      display: none;
+      margin-top: 24px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .preview-wrapper {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    #preview-img {
+      width: 100%;
+      max-height: 360px;
+      object-fit: contain;
+      display: block;
+    }
+
+    .preview-overlay {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+    }
+
+    .btn-clear {
+      background: rgba(10,10,15,0.85);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      backdrop-filter: blur(8px);
+    }
+
+    .btn-clear:hover { color: var(--danger); border-color: var(--danger); }
+
+    /* ── Analyze Button ── */
+    #btn-analyze {
+      display: none;
+      width: 100%;
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--accent);
+      color: #0a0a0f;
+      border: none;
+      border-radius: 12px;
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+      animation: fadeUp 0.4s 0.05s ease both;
+    }
+
+    #btn-analyze:hover { opacity: 0.88; transform: translateY(-1px); }
+    #btn-analyze:active { transform: translateY(0); }
+    #btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── Loading ── */
+    #loading {
+      display: none;
+      text-align: center;
+      padding: 32px;
+      color: var(--text-dim);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* ── Result ── */
+    #result {
+      display: none;
+      margin-top: 24px;
+      border-radius: 16px;
+      overflow: hidden;
+      animation: fadeUp 0.5s ease both;
+    }
+
+    .result-header {
+      padding: 28px 32px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .result-header.real  { background: rgba(0,245,160,0.08); border: 1px solid rgba(0,245,160,0.2); border-bottom: none; border-radius: 16px 16px 0 0; }
+    .result-header.fake  { background: rgba(255,60,95,0.08);  border: 1px solid rgba(255,60,95,0.2);  border-bottom: none; border-radius: 16px 16px 0 0; }
+
+    .result-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .result-header.real .result-dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .result-header.fake .result-dot { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+
+    .result-label {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+
+    .result-header.real .result-label { color: var(--accent); }
+    .result-header.fake .result-label { color: var(--danger); }
+
+    .result-confidence {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+
+    .result-confidence strong {
+      display: block;
+      font-family: 'Syne', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    /* Bars */
+    .result-bars {
+      padding: 20px 32px 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 16px 16px;
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .bar-row:last-child { margin-bottom: 0; }
+
+    .bar-label {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      width: 36px;
+      flex-shrink: 0;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 100px;
+      transition: width 0.8s cubic-bezier(0.16,1,0.3,1);
+      width: 0%;
+    }
+
+    .bar-fill.real { background: var(--accent); }
+    .bar-fill.fake { background: var(--danger); }
+
+    .bar-pct {
+      font-size: 12px;
+      font-weight: 500;
+      width: 44px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── Error ── */
+    #error {
+      display: none;
+      margin-top: 20px;
+      padding: 16px 20px;
+      background: rgba(255,60,95,0.08);
+      border: 1px solid rgba(255,60,95,0.25);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--danger);
+      animation: fadeUp 0.3s ease both;
+    }
+
+    /* ── Status ── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 32px;
+      padding: 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .status-dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .status-dot.offline { background: var(--danger); }
+
+    #status-text { flex: 1; }
+    #status-model { color: var(--accent); }
+
+    /* ── Animations ── */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">TCC — Detecção de Deepfake</div>
+    <h1>É <span>real</span> ou fake?</h1>
+    <p class="subtitle">Xception fine-tuned · Análise por rede neural</p>
+  </header>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="file-input" accept="image/*" />
+    <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+    </svg>
+    <h2>Arraste uma imagem ou clique para selecionar</h2>
+    <p>JPG, PNG, WEBP · <span>Máx. 10MB</span></p>
+  </div>
+
+  <!-- Preview -->
+  <div id="preview-section">
+    <div class="preview-wrapper">
+      <img id="preview-img" src="" alt="Preview" />
+      <div class="preview-overlay">
+        <button class="btn-clear" id="btn-clear">✕ Remover</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Analisar -->
+  <button id="btn-analyze">Analisar imagem</button>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    ANALISANDO...
+  </div>
+
+  <!-- Resultado -->
+  <div id="result">
+    <div class="result-header" id="result-header">
+      <div class="result-dot"></div>
+      <div class="result-label" id="result-label">—</div>
+      <div class="result-confidence">
+        Confiança
+        <strong id="result-conf">—</strong>
+      </div>
+    </div>
+    <div class="result-bars">
+      <div class="bar-row">
+        <span class="bar-label">Real</span>
+        <div class="bar-track"><div class="bar-fill real" id="bar-real"></div></div>
+        <span class="bar-pct" id="pct-real">—</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">Fake</span>
+        <div class="bar-track"><div class="bar-fill fake" id="bar-fake"></div></div>
+        <span class="bar-pct" id="pct-fake">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Erro -->
+  <div id="error"></div>
+
+  <!-- Status bar -->
+  <div id="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Verificando conexão com o servidor...</span>
+    <span id="status-model"></span>
+  </div>
+
+</div>
+
+<script>
+  const API = "http://localhost:5000";
+
+  const fileInput     = document.getElementById("file-input");
+  const uploadZone    = document.getElementById("upload-zone");
+  const previewSec    = document.getElementById("preview-section");
+  const previewImg    = document.getElementById("preview-img");
+  const btnClear      = document.getElementById("btn-clear");
+  const btnAnalyze    = document.getElementById("btn-analyze");
+  const loading       = document.getElementById("loading");
+  const result        = document.getElementById("result");
+  const resultHeader  = document.getElementById("result-header");
+  const resultLabel   = document.getElementById("result-label");
+  const resultConf    = document.getElementById("result-conf");
+  const barReal       = document.getElementById("bar-real");
+  const barFake       = document.getElementById("bar-fake");
+  const pctReal       = document.getElementById("pct-real");
+  const pctFake       = document.getElementById("pct-fake");
+  const errorDiv      = document.getElementById("error");
+  const statusDot     = document.getElementById("status-dot");
+  const statusText    = document.getElementById("status-text");
+  const statusModel   = document.getElementById("status-model");
+
+  let selectedFile = null;
+
+  // ── Drag & drop ──────────────────────────────────────────
+  uploadZone.addEventListener("dragover", e => {
+    e.preventDefault();
+    uploadZone.classList.add("dragover");
+  });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+  uploadZone.addEventListener("drop", e => {
+    e.preventDefault();
+    uploadZone.classList.remove("dragover");
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith("image/")) loadFile(file);
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+  });
+
+  function loadFile(file) {
+    selectedFile = file;
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewSec.style.display = "block";
+    btnAnalyze.style.display = "block";
+    result.style.display = "none";
+    errorDiv.style.display = "none";
+    hideLoading();
+  }
+
+  btnClear.addEventListener("click", () => {
+    selectedFile = null;
+    fileInput.value = "";
+    previewSec.style.display = "none";
+    btnAnalyze.style.display = "none";
+    result.style.display = "none";
+    errorDiv.style.display = "none";
+  });
+
+  // ── Analisar ─────────────────────────────────────────────
+  btnAnalyze.addEventListener("click", async () => {
+    if (!selectedFile) return;
+
+    btnAnalyze.disabled = true;
+    result.style.display = "none";
+    errorDiv.style.display = "none";
+    showLoading();
+
+    const formData = new FormData();
+    formData.append("image", selectedFile);
+
+    try {
+      const res  = await fetch(`${API}/predict`, { method: "POST", body: formData });
+      const data = await res.json();
+
+      hideLoading();
+
+      if (data.error) {
+        showError("Erro do servidor: " + data.error);
+        return;
+      }
+
+      showResult(data);
+
+    } catch (err) {
+      hideLoading();
+      showError("Não foi possível conectar ao servidor. Certifique-se de que o app.py está rodando.");
+    } finally {
+      btnAnalyze.disabled = false;
+    }
+  });
+
+  function showResult(data) {
+    const isFake = data.label === "Fake";
+
+    resultHeader.className = "result-header " + (isFake ? "fake" : "real");
+    resultLabel.textContent = data.label.toUpperCase();
+    resultConf.textContent  = data.confianca.toFixed(1) + "%";
+
+    result.style.display = "block";
+
+    // Anima as barras depois de um pequeno delay
+    setTimeout(() => {
+      barReal.style.width = data.real_prob + "%";
+      barFake.style.width = data.fake_prob + "%";
+    }, 80);
+
+    pctReal.textContent = data.real_prob.toFixed(1) + "%";
+    pctFake.textContent = data.fake_prob.toFixed(1) + "%";
+  }
+
+  function showError(msg) {
+    errorDiv.textContent = "⚠ " + msg;
+    errorDiv.style.display = "block";
+  }
+
+  function showLoading() {
+    loading.style.display = "block";
+    btnAnalyze.style.display = "none";
+  }
+
+  function hideLoading() {
+    loading.style.display = "none";
+    btnAnalyze.style.display = "block";
+  }
+
+  // ── Status do servidor ───────────────────────────────────
+  async function checkStatus() {
+    try {
+      const res  = await fetch(`${API}/status`);
+      const data = await res.json();
+      statusDot.className  = "status-dot online";
+      statusText.textContent = "Servidor online · " + data.dispositivo.toUpperCase();
+      statusModel.textContent = data.modelo;
+    } catch {
+      statusDot.className  = "status-dot offline";
+      statusText.textContent = "Servidor offline — execute: python app.py";
+      statusModel.textContent = "";
+    }
+  }
+
+  checkStatus();
+  setInterval(checkStatus, 10000);
+</script>
+</body>
+</html>
