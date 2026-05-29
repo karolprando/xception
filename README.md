@@ -12,14 +12,14 @@ Desenvolvido como TCC.
 
 ```bash
 # 1. Clona o repositorio
-git clone https://github.com/SEU_USUARIO/deepfake-detector
-cd deepfake-detector
+git clone https://github.com/SEU_USUARIO/xception
+cd xception
 
 # 2. Builda a imagem
-docker build -t deepfake-detector .
+docker build -t xception .
 
 # 3. Inicia o container
-docker run -p 5000:5000 deepfake-detector
+docker run -p 5000:5000 xception
 ```
 
 O modelo e baixado automaticamente do Hugging Face na primeira execucao.
