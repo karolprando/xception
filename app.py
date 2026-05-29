@@ -16,7 +16,7 @@ import torch.nn as nn
 import timm
 from PIL import Image
 from torchvision import transforms
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 # -------------------------------------------------------------
@@ -27,7 +27,6 @@ MODEL_URL  = "https://huggingface.co/karolprando/xception/resolve/main/xception_
 MODEL_PATH = "xception_140k.pth"
 IMG_SIZE   = 224
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-LABELS     = ["Fake", "Real"]
 
 # -------------------------------------------------------------
 #  DOWNLOAD DO MODELO
@@ -115,8 +114,13 @@ print("=" * 50)
 #  API FLASK
 # -------------------------------------------------------------
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=".")
 CORS(app)
+
+
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
 
 
 @app.route("/predict", methods=["POST"])
